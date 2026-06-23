@@ -1,4 +1,4 @@
-require('dotenv').config(); // Citim cheia din fișierul .env
+require('dotenv').config(); 
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -21,32 +21,25 @@ app.get('/metrics', async (req, res) => {
 // --- API GATEWAY COMPLEX ---
 app.get('/api/dashboard', async (req, res) => {
     try {
-        // Pentru Binance, cerem un Array de simboluri direct în URL pentru a salva timp
         const binanceSymbols = encodeURI('["BTCUSDT","ETHUSDT","SOLUSDT"]');
 
         const [binanceRes, frankfurterRes, coinGeckoRes, aaplRes, msftRes, nvdaRes] = await Promise.all([
-            // 1. Binance (Crypto) - 3 monede dintr-o lovitură
             axios.get(`https://api.binance.com/api/v3/ticker/24hr?symbols=${binanceSymbols}`).catch(() => ({ data: [] })),
             
-            // 2. Frankfurter (Valute) - Am adăugat și Francul Elvețian (CHF)
             axios.get('https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY,RON,CHF').catch(() => ({ data: { error: true } })),
             
-            // 3. CoinGecko (Sentiment / NFT)
             axios.get('https://api.coingecko.com/api/v3/search/trending').catch(() => ({ data: { error: true } })),
             
-            // 4. Finnhub (Wall Street - Cerem 3 acțiuni diferite)
             axios.get(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${FINNHUB_KEY}`).catch(() => ({ data: { error: true } })),
             axios.get(`https://finnhub.io/api/v1/quote?symbol=MSFT&token=${FINNHUB_KEY}`).catch(() => ({ data: { error: true } })),
             axios.get(`https://finnhub.io/api/v1/quote?symbol=NVDA&token=${FINNHUB_KEY}`).catch(() => ({ data: { error: true } }))
         ]);
 
-        // --- PROCESARE BINANCE ---
         const cryptoData = Array.isArray(binanceRes.data) ? binanceRes.data : [];
         const btc = cryptoData.find(c => c.symbol === 'BTCUSDT');
         const eth = cryptoData.find(c => c.symbol === 'ETHUSDT');
         const sol = cryptoData.find(c => c.symbol === 'SOLUSDT');
 
-        // --- PROCESARE FINNHUB (Tech Giants) ---
         const formatStock = (res, symbolName) => {
             if (res.data.error || !res.data.c) return null;
             return {
@@ -61,7 +54,6 @@ app.get('/api/dashboard', async (req, res) => {
             formatStock(nvdaRes, 'NVDA (Nvidia)')
         ].filter(s => s !== null);
 
-        // --- PROCESARE COINGECKO (Crypto & NFTs) ---
         let trendingCoins = [];
         let trendingNFTs = [];
         if (!coinGeckoRes.data.error) {
@@ -77,13 +69,11 @@ app.get('/api/dashboard', async (req, res) => {
             }
         }
 
-        // --- PROCESARE FRANKFURTER ---
         const fiatData = frankfurterRes.data.error ? null : {
             date: frankfurterRes.data.date,
             rates: frankfurterRes.data.rates
         };
 
-        // --- ASAMBLARE FINALĂ ---
         const dashboardData = {
             timestamp: new Date().toISOString(),
             bitcoin: btc ? { price: parseFloat(btc.lastPrice).toFixed(2), change: parseFloat(btc.priceChangePercent).toFixed(2) } : null,
