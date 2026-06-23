@@ -1,0 +1,113 @@
+require('dotenv').config(); // Citim cheia din fișierul .env
+const express = require('express');
+const cors = require('cors');
+const axios = require('axios');
+const client = require('prom-client');
+
+const app = express();
+app.use(cors());
+
+const FINNHUB_KEY = process.env.FINNHUB_KEY;
+
+// --- CONFIGURARE PROMETHEUS ---
+const collectDefaultMetrics = client.collectDefaultMetrics;
+collectDefaultMetrics({ register: client.register });
+
+app.get('/metrics', async (req, res) => {
+    res.set('Content-Type', client.register.contentType);
+    res.end(await client.register.metrics());
+});
+
+// --- API GATEWAY COMPLEX ---
+app.get('/api/dashboard', async (req, res) => {
+    try {
+        // Pentru Binance, cerem un Array de simboluri direct în URL pentru a salva timp
+        const binanceSymbols = encodeURI('["BTCUSDT","ETHUSDT","SOLUSDT"]');
+
+        const [binanceRes, frankfurterRes, coinGeckoRes, aaplRes, msftRes, nvdaRes] = await Promise.all([
+            // 1. Binance (Crypto) - 3 monede dintr-o lovitură
+            axios.get(`https://api.binance.com/api/v3/ticker/24hr?symbols=${binanceSymbols}`).catch(() => ({ data: [] })),
+            
+            // 2. Frankfurter (Valute) - Am adăugat și Francul Elvețian (CHF)
+            axios.get('https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY,RON,CHF').catch(() => ({ data: { error: true } })),
+            
+            // 3. CoinGecko (Sentiment / NFT)
+            axios.get('https://api.coingecko.com/api/v3/search/trending').catch(() => ({ data: { error: true } })),
+            
+            // 4. Finnhub (Wall Street - Cerem 3 acțiuni diferite)
+            axios.get(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${FINNHUB_KEY}`).catch(() => ({ data: { error: true } })),
+            axios.get(`https://finnhub.io/api/v1/quote?symbol=MSFT&token=${FINNHUB_KEY}`).catch(() => ({ data: { error: true } })),
+            axios.get(`https://finnhub.io/api/v1/quote?symbol=NVDA&token=${FINNHUB_KEY}`).catch(() => ({ data: { error: true } }))
+        ]);
+
+        // --- PROCESARE BINANCE ---
+        const cryptoData = Array.isArray(binanceRes.data) ? binanceRes.data : [];
+        const btc = cryptoData.find(c => c.symbol === 'BTCUSDT');
+        const eth = cryptoData.find(c => c.symbol === 'ETHUSDT');
+        const sol = cryptoData.find(c => c.symbol === 'SOLUSDT');
+
+        // --- PROCESARE FINNHUB (Tech Giants) ---
+        const formatStock = (res, symbolName) => {
+            if (res.data.error || !res.data.c) return null;
+            return {
+                symbol: symbolName,
+                price: parseFloat(res.data.c).toFixed(2),
+                changePercent: parseFloat(res.data.dp).toFixed(2)
+            };
+        };
+        const stocksData = [
+            formatStock(aaplRes, 'AAPL (Apple)'),
+            formatStock(msftRes, 'MSFT (Microsoft)'),
+            formatStock(nvdaRes, 'NVDA (Nvidia)')
+        ].filter(s => s !== null);
+
+        // --- PROCESARE COINGECKO (Crypto & NFTs) ---
+        let trendingCoins = [];
+        let trendingNFTs = [];
+        if (!coinGeckoRes.data.error) {
+            if (coinGeckoRes.data.coins) {
+                trendingCoins = coinGeckoRes.data.coins.slice(0, 3).map(c => ({
+                    name: c.item.name, symbol: c.item.symbol
+                }));
+            }
+            if (coinGeckoRes.data.nfts) {
+                trendingNFTs = coinGeckoRes.data.nfts.slice(0, 3).map(n => ({
+                    name: n.name, symbol: n.symbol
+                }));
+            }
+        }
+
+        // --- PROCESARE FRANKFURTER ---
+        const fiatData = frankfurterRes.data.error ? null : {
+            date: frankfurterRes.data.date,
+            rates: frankfurterRes.data.rates
+        };
+
+        // --- ASAMBLARE FINALĂ ---
+        const dashboardData = {
+            timestamp: new Date().toISOString(),
+            bitcoin: btc ? { price: parseFloat(btc.lastPrice).toFixed(2), change: parseFloat(btc.priceChangePercent).toFixed(2) } : null,
+            altcoins: [
+                eth ? { symbol: 'ETH', price: parseFloat(eth.lastPrice).toFixed(2), change: parseFloat(eth.priceChangePercent).toFixed(2) } : null,
+                sol ? { symbol: 'SOL', price: parseFloat(sol.lastPrice).toFixed(2), change: parseFloat(sol.priceChangePercent).toFixed(2) } : null
+            ].filter(a => a !== null),
+            stocks: stocksData,
+            fiat: fiatData,
+            trending: {
+                crypto: trendingCoins,
+                nfts: trendingNFTs
+            }
+        };
+
+        res.json(dashboardData);
+
+    } catch (error) {
+        console.error("Eroare Gateway:", error.message);
+        res.status(500).json({ error: "Eroare internă Gateway" });
+    }
+});
+
+const PORT = 3000;
+app.listen(PORT, () => {
+    console.log(`[REST Gateway] Serverul rulează pe http://localhost:${PORT}`);
+});
