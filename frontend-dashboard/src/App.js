@@ -12,7 +12,7 @@ function App() {
 
   const fetchData = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/dashboard');
+      const response = await fetch('/api/dashboard');
       if (!response.ok) throw new Error('Eroare conectare API Gateway');
       const result = await response.json();
       setData(result);
