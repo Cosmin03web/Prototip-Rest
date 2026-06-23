@@ -53,7 +53,7 @@ function App() {
       <div className="dashboard-header">
         <h1>Global Markets Aggregator REST</h1>
         <span className="architecture-label" style={{ backgroundColor: '#8e44ad' }}>
-          Platformă activă (Vezi codul curent)
+          Platformă activă
         </span>
       </div>
 
