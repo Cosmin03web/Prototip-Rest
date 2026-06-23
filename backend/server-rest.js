@@ -99,10 +99,13 @@ app.get('/api/dashboard', async (req, res) => {
 
 const PORT = 3000;
 const path = require('path');
-app.use(express.static(path.join(__dirname, 'frontend-dashboard/build')));
+
+app.use(express.static(path.join(__dirname, '../frontend-dashboard/build')));
+
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend-dashboard/build', 'index.html'));
+    res.sendFile(path.join(__dirname, '../frontend-dashboard/build', 'index.html'));
 });
+
 app.listen(PORT, () => {
     console.log(`[REST Gateway] Serverul rulează pe http://localhost:${PORT}`);
 });
